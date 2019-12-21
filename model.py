@@ -1,5 +1,5 @@
 from pytorch_pretrained_bert.modeling import (
-    BertPreTrainedModel as PreTrainedBertModel, # The name was changed in the new versions of pytorch_pretrained_bert
+    BertPreTrainedModel as PreTrainedBertModel,  # The name was changed in the new versions of pytorch_pretrained_bert
     BertModel,
     BertLayerNorm,
     gelu,
@@ -36,6 +36,9 @@ class MLP(nn.Module):
         self.drop_out = nn.Dropout(p=dropout_prob)
 
     def forward(self, x):
+
+        x = x.cpu()#################
+
         for i, layer in enumerate(self.layers):
             x = layer(self.drop_out(x))
             if i < len(self.layers) - 1:
@@ -60,10 +63,16 @@ class GCN(nn.Module):
         self.apply(self.init_weights)
 
     def forward(self, A, x):
+        device = torch.device('cpu')
+        x = x.to(device)###############
+        A = A.to(device)
+
+
         layer1_diffusion = A.t().mm(gelu(self.diffusion(x)))
         x = gelu(self.retained(x) + layer1_diffusion)
         layer2_diffusion = A.t().mm(gelu(self.diffusion(x)))
         x = gelu(self.retained(x) + layer2_diffusion)
+
         return self.predict(x).squeeze(-1)
 
 
@@ -104,10 +113,10 @@ class BertEmbeddingsPlus(nn.Module):
         sentence_type_embeddings = self.sentence_type_embeddings(token_type_ids)
 
         embeddings = (
-            words_embeddings
-            + position_embeddings
-            + token_type_embeddings
-            + sentence_type_embeddings
+                words_embeddings
+                + position_embeddings
+                + token_type_embeddings
+                + sentence_type_embeddings
         )
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
@@ -123,7 +132,7 @@ class BertModelPlus(BertModel):
         self.apply(self.init_bert_weights)
 
     def forward(
-        self, input_ids, token_type_ids=None, attention_mask=None, output_hidden=-4
+            self, input_ids, token_type_ids=None, attention_mask=None, output_hidden=-4
     ):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
@@ -168,17 +177,17 @@ class BertForMultiHopQuestionAnswering(PreTrainedBertModel):
         self.apply(self.init_bert_weights)
 
     def forward(
-        self,
-        input_ids,
-        token_type_ids=None,
-        attention_mask=None,
-        sep_positions=None,
-        hop_start_weights=None,
-        hop_end_weights=None,
-        ans_start_weights=None,
-        ans_end_weights=None,
-        B_starts=None,
-        allow_limit=(0, 0),
+            self,
+            input_ids,
+            token_type_ids=None,
+            attention_mask=None,
+            sep_positions=None,
+            hop_start_weights=None,
+            hop_end_weights=None,
+            ans_start_weights=None,
+            ans_end_weights=None,
+            B_starts=None,
+            allow_limit=(0, 0),
     ):
         """ Extract spans by System 1.
         
@@ -253,29 +262,29 @@ class BertForMultiHopQuestionAnswering(PreTrainedBertModel):
             )
             ans_start_gap = torch.zeros(batch_size, device=device)
             for u, (start_logits, end_logits, preds, K, allow) in enumerate(
-                (
                     (
-                        hop_start_logits,
-                        hop_end_logits,
-                        hop_preds,
-                        K_hop,
-                        allow_limit[0],
-                    ),
-                    (
-                        ans_start_logits,
-                        ans_end_logits,
-                        ans_preds,
-                        K_ans,
-                        allow_limit[1],
-                    ),
-                )
+                            (
+                                    hop_start_logits,
+                                    hop_end_logits,
+                                    hop_preds,
+                                    K_hop,
+                                    allow_limit[0],
+                            ),
+                            (
+                                    ans_start_logits,
+                                    ans_end_logits,
+                                    ans_preds,
+                                    K_ans,
+                                    allow_limit[1],
+                            ),
+                    )
             ):
                 for i in range(batch_size):
                     if sep_positions[i, 0] > 0:
-                        values, indices = start_logits[i, B_starts[i] :].topk(K)
+                        values, indices = start_logits[i, B_starts[i]:].topk(K)
                         for k, index in enumerate(indices):
                             if values[k] <= start_logits[i, 0] - allow:  # not golden
-                                if u == 1: # For ans spans
+                                if u == 1:  # For ans spans
                                     ans_start_gap[i] = start_logits[i, 0] - values[k]
                                 break
                             start = index + B_starts[i]
@@ -310,6 +319,8 @@ class CognitiveGNN(nn.Module):
         hop_loss, ans_loss, semantics = model(
             *batch
         )  # Shape of semantics: [num_para, hidden_size]
+
+        device = torch.device('cpu')
         num_additional_nodes = len(bundle.additional_nodes)
 
         if num_additional_nodes > 0:
@@ -356,7 +367,7 @@ class CognitiveGNN(nn.Module):
             final_loss = 0.2 * torch.nn.functional.binary_cross_entropy_with_logits(
                 classifier(diff_sem).squeeze(-1), ans.to(device)
             )
-        return hop_loss, ans_loss, final_loss
+        return hop_loss.cpu(), ans_loss.cpu(), final_loss.cpu()
 
 
 if __name__ == "__main__":
@@ -370,4 +381,3 @@ if __name__ == "__main__":
     )
     tokenized_text = tokenizer.tokenize(orig_text)
     print(len(tokenized_text))
-
