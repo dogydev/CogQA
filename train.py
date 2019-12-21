@@ -1,29 +1,23 @@
-import re
 import json
-from tqdm import tqdm, trange
-import pdb
-import random
-from collections import namedtuple
-import numpy as np
-import copy
-import torch
 import traceback
-from torch.optim import Adam
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-from pytorch_pretrained_bert.tokenization import whitespace_tokenize, BasicTokenizer, BertTokenizer
-from pytorch_pretrained_bert.modeling import BertForQuestionAnswering
+
+import torch
 from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 from pytorch_pretrained_bert.optimization import BertAdam
-from model import BertForMultiHopQuestionAnswering, CognitiveGNN
-from utils import warmup_linear, find_start_end_after_tokenized, find_start_end_before_tokenized, bundle_part_to_batch, judge_question_type, fuzzy_retrieve, WindowMean, fuzz
+from pytorch_pretrained_bert.tokenization import BertTokenizer
+from torch.optim import Adam
+from tqdm import tqdm, trange
+
 from data import convert_question_to_samples_bundle, homebrew_data_loader
+from model import BertForMultiHopQuestionAnswering, CognitiveGNN
+from utils import warmup_linear, WindowMean
 
 
 def train(bundles, model1, device, mode, model2, batch_size, num_epoch, gradient_accumulation_steps, lr1, lr2, alpha):
     '''Train Sys1 and Sys2 models.
-    
-    Train models by task #1(tensors) and task #2(bundle). 
-    
+
+    Train models by task #1(tensors) and task #2(bundle).
+
     Args:
         bundles (list): List of bundles.
         model1 (BertForMultiHopQuestionAnswering): System 1 model.
@@ -32,11 +26,11 @@ def train(bundles, model1, device, mode, model2, batch_size, num_epoch, gradient
         model2 (CognitiveGNN): System 2 model.
         batch_size (int): Defaults to 4.
         num_epoch (int): Defaults to 1.
-        gradient_accumulation_steps (int): Defaults to 1. 
+        gradient_accumulation_steps (int): Defaults to 1.
         lr1 (float): Defaults to 1e-4. Learning rate for Sys1.
         lr2 (float): Defaults to 1e-4. Learning rate for Sys2.
         alpha (float): Defaults to 0.2. Balance factor for loss of two systems.
-    
+
     Returns:
         ([type], [type]): Trained models.
     '''
@@ -60,7 +54,7 @@ def train(bundles, model1, device, mode, model2, batch_size, num_epoch, gradient
     # Prepare optimizer for Sys2
     if mode == 'bundle':
         opt2 = Adam(model2.parameters(), lr=lr2)
-        model2.to(device)
+        model2.cpu()
         model2.train()
         warmed = False # warmup for jointly training
 
@@ -116,14 +110,14 @@ def train(bundles, model1, device, mode, model2, batch_size, num_epoch, gradient
                         torch.save(saved_dict, output_model_file)
             except Exception as err:
                 traceback.print_exc()
-                if mode == 'bundle':   
-                    print(batch._id) 
+                if mode == 'bundle':
+                    print(batch._id)
     return (model1, model2)
 
 
-def main(output_model_file = './models/bert-base-uncased.bin', load = False, mode = 'tensors', batch_size = 12, 
+def main(output_model_file = './models/bert-base-uncased.bin', load = False, mode = 'bundle', batch_size = 1,
             num_epoch = 1, gradient_accumulation_steps = 1, lr1 = 1e-4, lr2 = 1e-4, alpha = 0.2):
-    
+
     BERT_MODEL = 'bert-base-uncased' # bert-large is too large for ordinary GPU on task #2
     tokenizer = BertTokenizer.from_pretrained(BERT_MODEL, do_lower_case=True)
     with open('./hotpot_train_v1.1_refined.json' ,'r') as fin:
@@ -154,7 +148,7 @@ def main(output_model_file = './models/bert-base-uncased.bin', load = False, mod
     model1 = torch.nn.DataParallel(model1, device_ids = range(torch.cuda.device_count()))
     model1, model2 = train(bundles, model1=model1, device=device, mode=mode, model2=model2, # Then pass hyperparams
         batch_size=batch_size, num_epoch=num_epoch, gradient_accumulation_steps=gradient_accumulation_steps,lr1=lr1, lr2=lr2, alpha=alpha)
-    
+
     print('Saving model to {}'.format(output_model_file))
     saved_dict = {'params1' : model1.module.state_dict()}
     saved_dict['params2'] = model2.state_dict()
