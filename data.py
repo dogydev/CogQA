@@ -1,22 +1,11 @@
-import re
-import json
-from tqdm import tqdm, trange
-import pdb
 import random
-from collections import namedtuple
-import numpy as np
-import copy
-import traceback
-import torch
-from torch.optim import Adam
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-from pytorch_pretrained_bert.tokenization import whitespace_tokenize, BasicTokenizer, BertTokenizer
-from pytorch_pretrained_bert.modeling import BertForQuestionAnswering
-from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE
-from pytorch_pretrained_bert.optimization import BertAdam
-from model import BertForMultiHopQuestionAnswering, CognitiveGNN
-from utils import warmup_linear, find_start_end_after_tokenized, find_start_end_before_tokenized, bundle_part_to_batch, fuzzy_retrieve, WindowMean, fuzz
+import re
 
+import numpy as np
+import torch
+from pytorch_pretrained_bert.tokenization import BertTokenizer
+
+from utils import find_start_end_after_tokenized, bundle_part_to_batch, fuzzy_retrieve, fuzz
 
 
 class Bundle(object):
@@ -139,8 +128,8 @@ def convert_question_to_samples_bundle(tokenizer, data: 'Json refined', neg = 2)
     for entity, para in context.items():
         num_hop, num_ans = 0, 0
         tokenized_all = tokenized_question + clues[e2i[entity]]
-        if len(tokenized_all) > 512: # BERT-base accepts at most 512 tokens
-            tokenized_all = tokenized_all[:512]
+        if len(tokenized_all) > 256: # BERT-base accepts at most 256 tokens
+            tokenized_all = tokenized_all[:256]
             print('CLUES TOO LONG, id: {}'.format(data['_id']))
         # initialize a sample for ``entity''
         sep_position = [] 
@@ -152,7 +141,7 @@ def convert_question_to_samples_bundle(tokenizer, data: 'Json refined', neg = 2)
 
         for sen_num, sen in enumerate(para):
             tokenized_sen = tokenizer.tokenize(sen) + ['[SEP]']
-            if len(tokenized_all) + len(tokenized_sen) > 512 or sen_num > 15:
+            if len(tokenized_all) + len(tokenized_sen) > 256 or sen_num > 15:
                 break
             tokenized_all += tokenized_sen
             segment_id += [sen_num + 1] * len(tokenized_sen)
@@ -177,7 +166,7 @@ def convert_question_to_samples_bundle(tokenizer, data: 'Json refined', neg = 2)
             ans_start_weight += as_weight
             ans_end_weight += ae_weight
             
-        assert len(tokenized_all) <= 512
+        assert len(tokenized_all) <= 256
         # if entity is a negative node, train negative threshold at [CLS] 
         if 1 not in hop_start_weight:
             hop_start_weight[0] = 0.1
@@ -206,8 +195,8 @@ def convert_question_to_samples_bundle(tokenizer, data: 'Json refined', neg = 2)
         if answer_entity not in context and answer_entity in e2i:
             n += 1
             tokenized_all = tokenized_question + clues[e2i[answer_entity]]
-            if len(tokenized_all) > 512:
-                tokenized_all = tokenized_all[:512]
+            if len(tokenized_all) > 256:
+                tokenized_all = tokenized_all[:256]
                 print('ANSWER TOO LONG! id: {}'.format(data['_id']))
             additional_nodes.append(tokenizer.convert_tokens_to_ids(tokenized_all))
 
@@ -222,8 +211,8 @@ def convert_question_to_samples_bundle(tokenizer, data: 'Json refined', neg = 2)
                 neg -= 1
                 continue
             tokenized_all = tokenized_question + tokenizer.tokenize(context[father_para][father_sen]) + ['[SEP]']
-            if len(tokenized_all) > 512:
-                tokenized_all = tokenized_all[:512]
+            if len(tokenized_all) > 256:
+                tokenized_all = tokenized_all[:256]
                 print('NEG TOO LONG! id: {}'.format(data['_id']))
             additional_nodes.append(tokenizer.convert_tokens_to_ids(tokenized_all))
             edges_in_bundle.append((e2i[father_para], n))
