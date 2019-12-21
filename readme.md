@@ -1,5 +1,15 @@
 # CogQA
 
+### GPU and CPU training
+Code is a bit messy since I was debugging many errors.
+Main changes:
+model.py
+train.py
+cogqa.py
+data.py
+
+
+
 ### [Project](https://sites.google.com/view/cognitivegraph/) | [arXiv](https://arxiv.org/abs/1905.05460)
 
 Source codes for the paper **Cognitive Graph for Multi-Hop Reading Comprehension at Scale.**  *(ACL 2019 Oral)* 
